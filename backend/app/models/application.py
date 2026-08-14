@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Text, UniqueConstraint, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -14,7 +14,12 @@ if TYPE_CHECKING:
 
 class Application(Base):
     __tablename__ = "applications"
-    __table_args__ = (UniqueConstraint("job_id", "candidate_id", name="uq_application_job_candidate"),)
+    __table_args__ = (
+        # Duplicate prevention enforced by the database, not just by service code.
+        UniqueConstraint("job_id", "candidate_id", name="uq_application_job_candidate"),
+        Index("ix_applications_job_id_status", "job_id", "status"),
+        Index("ix_applications_candidate_id_created", "candidate_id", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"))

@@ -18,3 +18,7 @@ frontend/.env
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+backend/logs/
+# dev.sh / dev.ps1 wrapper logs
+logs/

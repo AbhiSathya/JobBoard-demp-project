@@ -9,8 +9,13 @@ jobboard_backend.egg-info/top_level.txt
 tests/test_analytics.py
 tests/test_applications.py
 tests/test_auth.py
+tests/test_auth_tokens.py
+tests/test_email_flows.py
 tests/test_jobs.py
+tests/test_live_openrouter.py
+tests/test_llm_explain.py
 tests/test_match_api.py
+tests/test_match_grounding.py
 tests/test_matching_intent.py
 tests/test_matching_provider.py
 tests/test_matching_score.py

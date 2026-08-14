@@ -39,9 +39,7 @@ def make_profile(client, token, **overrides):
 
 def test_apply_without_profile_rejected(client, admin_token, candidate_token):
     job = make_job(client, admin_token)
-    resp = client.post(
-        "/api/applications", json={"job_id": job["id"]}, headers=auth_headers(candidate_token)
-    )
+    resp = client.post("/api/applications", json={"job_id": job["id"]}, headers=auth_headers(candidate_token))
     assert resp.status_code == 409
     assert resp.json()["error"]["details"] == ["profile_required"]
 
@@ -68,7 +66,9 @@ def test_apply_to_missing_job_404(client, candidate_token):
 
 def test_apply_to_closed_job_rejected(client, admin_token, candidate_token):
     job = make_job(client, admin_token)
-    client.patch(f"/api/jobs/{job['id']}/status", json={"status": "closed"}, headers=auth_headers(admin_token))
+    client.patch(
+        f"/api/jobs/{job['id']}/status", json={"status": "closed"}, headers=auth_headers(admin_token)
+    )
     make_profile(client, candidate_token)
     resp = client.post("/api/applications", json={"job_id": job["id"]}, headers=auth_headers(candidate_token))
     assert resp.status_code == 409
@@ -88,7 +88,8 @@ def test_my_applications_list(client, admin_token, candidate_token):
     client.post("/api/applications", json={"job_id": job["id"]}, headers=auth_headers(candidate_token))
     resp = client.get("/api/applications/me", headers=auth_headers(candidate_token))
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert resp.json()["total"] == 1
+    assert len(resp.json()["items"]) == 1
 
 
 def test_admin_views_job_applications(client, admin_token, candidate_token):
@@ -97,7 +98,8 @@ def test_admin_views_job_applications(client, admin_token, candidate_token):
     client.post("/api/applications", json={"job_id": job["id"]}, headers=auth_headers(candidate_token))
     resp = client.get(f"/api/jobs/{job['id']}/applications", headers=auth_headers(admin_token))
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    assert resp.json()["total"] == 1
+    assert len(resp.json()["items"]) == 1
 
 
 def test_non_owner_admin_cannot_view_applications(client, admin_token, candidate_token):

@@ -112,7 +112,7 @@
 
   <li>
     <h3>Browse and filter</h3>
-    <div class="do">Go to <b>Browse Jobs</b>. Filter by skill <code>python</code>, then add location <code>remote</code>. Show the filters combining, then hit <b>Reset filters</b>.</div>
+    <div class="do">Go to <b>Browse</b>. Type <code>python</code> in Search — the network tab fires once, not per keystroke — then add <code>Remote</code> as the location. Show the active-filter chips, dismiss one, then <b>Clear all</b>. Reload the page to show the filter state survived in the URL.</div>
   </li>
 
   <li>
@@ -134,7 +134,14 @@
 
   <li>
     <h3>Apply</h3>
-    <div class="do">Open the top result, add a short cover note, click <b>Apply now</b>. Then click it again — or go to <b>My Applications</b> to show the duplicate is blocked server-side, not just hidden in the UI.</div>
+    <div class="do">Open the top result — the sticky panel shows your skill overlap against this role before you commit. Add a short cover note and click <b>Apply</b>. Then click it again — or go to <b>My Applications</b> to show the duplicate is blocked server-side, not just hidden in the UI.</div>
+  </li>
+
+  <li>
+    <h3>The email side, without a mail server</h3>
+    <div class="do">Have <code>tail -f backend/logs/jobboard-*.log</code> open in a terminal beside the browser. The application you just submitted put two messages in it: a confirmation to the candidate and a "new application for <em>{job}</em>" to the admin who posted the role.</div>
+    <div class="say">With no SMTP host configured, every message is written to the log in full instead of being sent — which is how the whole flow stays demoable on a laptop. Set the SMTP block in <code>.env</code> and the same code path sends for real; nothing else changes.</div>
+    <div class="do">Optional, ~40 seconds: register a brand-new candidate with any address, copy the verification link out of the log, open it, and show the account verified. <code>grep -o 'verify-email?token=[^ ]*' backend/logs/*.log | tail -1</code></div>
   </li>
 
   <li>
@@ -150,12 +157,12 @@
 
   <li>
     <h3>Review an application</h3>
-    <div class="do">Open <b>Applications</b> for a job with a submitted application. Click the row to expand the candidate's full profile snapshot. Click <b>Shortlist</b>.</div>
+    <div class="do">Open <b>Applicants</b> for a job with a submitted application. The candidate list is on the left, the full profile snapshot on the right, and <code>j</code>/<code>k</code> move between candidates. Click <b>Shortlist</b> — note the toast, and that the candidate is emailed.</div>
   </li>
 
   <li>
     <h3>Dashboard</h3>
-    <div class="do">Go to <b>Dashboard</b>. Point at the applications-per-job chart and the skill distribution chart.</div>
+    <div class="do">Go to <b>Dashboard</b>. Point at the pipeline funnel, applications per posting, and skill demand vs. supply — that last one answers a question nothing else on the page does: are you requiring skills your applicants actually have? Toggle one chart to <b>Table</b> to show the numbers behind it.</div>
     <div class="say">Every number here comes from the rows we just created — there's no seeded or hardcoded dashboard state.</div>
   </li>
 </ol>
@@ -175,10 +182,13 @@
   <dd>The brief explicitly warns against putting essential ranking logic inside an untestable prompt. A weighted scorer is deterministic, unit-tested (25 tests pin the weights and ordering), and — critically for this evaluation — explainable in this conversation without hand-waving. The LLM is used only where fuzziness is the actual job: turning a sentence into structured fields.</dd>
 
   <dt>What happens if OpenRouter is down or the key is missing?</dt>
-  <dd>The provider call has an 8-second timeout and every failure mode — no key, timeout, non-200, malformed JSON, schema-invalid JSON — falls back to a deterministic keyword extractor. This isn't a rarely-tested escape hatch: it's what's running in this demo right now, since no key is configured in this environment, and it's covered by the AI-provider failure-matrix tests in <code>test_matching_provider.py</code>.</dd>
+  <dd>Each call gets a 12-second timeout inside an 18-second total AI budget, and the models are tried in order — a 404, a 429 or a timeout on one falls through to the next. Every failure mode (no key, timeout, non-200, empty content, malformed JSON, schema-invalid JSON) ends at the deterministic keyword extractor. The response says which path ran: <code>ai_status</code> is <code>live</code>, <code>degraded</code> (ranked with the model, explanations left as templates) or <code>fallback</code>. The ranking is identical either way — the three scores quoted above were captured on the fallback path and match the live path exactly. It is covered by the failure-matrix tests in <code>test_matching_provider.py</code>.</dd>
 
   <dt>How do you stop the explanation from inventing a skill the candidate doesn't have?</dt>
-  <dd>The explanation is assembled in Python from fields already on the score breakdown — matched skills, missing skills, domain match, location match. There's no LLM call in that path at all, so there's no mechanism by which it could state something the breakdown doesn't contain.</dd>
+  <dd>The explanation is assembled in Python from fields already on the score breakdown — matched skills, missing skills, domain match, location match. The model is then asked to rephrase it into something readable, and the rewrite is kept only if it passes two checks in <code>llm_explain.py</code>: every skill, domain and location it names must have come off the breakdown, and it must not claim a match for anything the breakdown lists as missing. Fail either check and the template ships instead. Each card labels which wording you are reading — <em>AI wording</em> or <em>Rule wording</em> — so the honesty is visible rather than asserted.</dd>
+
+  <dt>How does the session actually work?</dt>
+  <dd>Four token types, each with a <code>typ</code> claim that is checked on use, so a password-reset link can never be replayed as a session: access (15 minutes, held in memory in the SPA), refresh (14 days, httpOnly SameSite=Lax cookie), verify (24 hours) and reset (30 minutes). On the first 401 the fetch client calls <code>/auth/refresh</code> once, queues any concurrent requests behind that single refresh, retries them, and signs out only if the refresh itself fails — so an expired access token is invisible to the user. A completed password reset increments the user's <code>token_version</code>, which invalidates every outstanding refresh and reset token at once.</dd>
 
   <dt>Why SQLite instead of Postgres?</dt>
   <dd>The stated constraint was "works on Windows and Ubuntu without dependency issues." SQLite's driver ships with Python; Postgres would mean either Docker as a hard prerequisite or asking the evaluator to install and configure a database server before they can run the app. SQLAlchemy + Alembic keep Postgres a connection-string change away if this went to production.</dd>
@@ -193,18 +203,21 @@
   <dd>Every admin route depends on a FastAPI dependency (<code>CurrentAdmin</code>) that checks the JWT's role server-side — not just a hidden button in the UI. Job and application mutations additionally check that the requesting admin owns the job in question; there are explicit tests for a second admin account being rejected with 403.</dd>
 
   <dt>What would you build next given more time?</dt>
-  <dd>Embedding-based semantic matching for skills/domains, Postgres for real concurrent load, refresh tokens and password reset, and weights learned from real apply/hire outcomes instead of hand-set values.</dd>
+  <dd>Embedding-based semantic matching for skills/domains, Postgres for real concurrent load, a queue behind the outbound email so a failed send retries instead of being dropped, and weights learned from real apply/hire outcomes instead of hand-set values.</dd>
 </dl>
 
 <h2>Pre-presentation checklist</h2>
 <ul class="checklist">
   <li>Fresh database: <code>rm jobboard.db && alembic upgrade head</code></li>
   <li>Seed data loaded: <code>python -m scripts.seed</code> — confirm it prints 5 companies / 18 jobs / 6 candidates / 13 applications</li>
-  <li>Backend running: <code>uvicorn app.main:app --port 8000</code> — check <code>/api/health</code> returns <code>{"status":"ok"}</code></li>
-  <li>Frontend running: <code>npm run dev</code> — check the app loads at <code>localhost:5173</code></li>
+  <li>Both servers running: <code>./dev.sh</code> from the repo root (<code>.\dev.ps1</code> on Windows) — it migrates, starts both, prefixes their output, and stops both on Ctrl-C</li>
+  <li>Check <code>/api/health</code> returns <code>{"status":"ok"}</code> and the app loads at <code>localhost:5173</code></li>
   <li>Full candidate workflow run once, end to end, right before the call</li>
   <li>Full admin workflow run once, end to end, right before the call</li>
-  <li>AI match page run once with <code>OPENROUTER_API_KEY</code> unset — confirms the fallback path the demo actually depends on</li>
+  <li>AI match page run once with the key set — confirm the header reads <em>Matched with {model}</em>, not <em>Matched offline</em></li>
+  <li>AI match page run once with <code>OPENROUTER_API_KEY</code> commented out — same ranking, <em>Matched offline</em>, no error</li>
+  <li>Budget your rehearsals: OpenRouter's free tier allows <b>50 model requests per day per account</b> (1000 with $10 of credit), and each match spends up to two. When it runs out every model returns 429, you land on the fallback path, and the header reads <em>Matched offline</em>. It resets at 00:00 UTC. Set <code>AI_EXPLANATIONS=false</code> to halve the spend while practising.</li>
+  <li><code>tail -f backend/logs/jobboard-*.log</code> open in a spare terminal, for the email step</li>
   <li>If a key is being used for the call, restore it in <code>.env</code> and restart the backend</li>
   <li>All code committed — no changes made after this checklist is run</li>
   <li>This document and the slides open in a second tab, ready to read from</li>

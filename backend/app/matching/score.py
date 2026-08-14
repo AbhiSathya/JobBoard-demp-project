@@ -70,9 +70,13 @@ def _score_domain(intent: MatchIntent, profile: ProfileFacts | None, job: JobFac
     if not job.domain:
         return 0.6, False
 
+    # What the candidate just asked for beats what their profile says in general — the
+    # same precedence location already uses. Unioning the two meant a query saying
+    # "healthcare" still scored a fintech role full marks off a profile interest, and
+    # then explained it as "matches your stated interest", which was simply untrue.
     candidate_domains = {d.strip().lower() for d in intent.domains}
-    if profile:
-        candidate_domains |= {d.strip().lower() for d in profile.domain_interests}
+    if not candidate_domains and profile:
+        candidate_domains = {d.strip().lower() for d in profile.domain_interests}
 
     if not candidate_domains:
         return 0.6, False

@@ -1,11 +1,25 @@
+from typing import Literal
+
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from app.core.errors import ForbiddenError, NotFoundError
-from app.models.enums import ExperienceLevel, JobStatus
+from app.models.enums import EmploymentType, ExperienceLevel, JobStatus
 from app.models.job import Job
 from app.models.user import User
 from app.schemas.job import JobCreate, JobUpdate
+
+MAX_PAGE_SIZE = 100
+JobSort = Literal["newest", "oldest", "title"]
+
+
+def paginate(query: Query, page: int, page_size: int) -> tuple[list, int]:
+    """One count + one page of rows. Shared by every list endpoint so the envelope,
+    the clamping, and the off-by-one all live in exactly one place."""
+    total = query.order_by(None).count()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
+    return query.offset((page - 1) * page_size).limit(page_size).all(), total
 
 
 def _skills_text(skills: list[str]) -> str:
@@ -74,8 +88,11 @@ def list_jobs(
     skills: list[str] | None = None,
     location: str | None = None,
     experience_level: ExperienceLevel | None = None,
+    employment_type: EmploymentType | None = None,
+    domain: str | None = None,
     status: JobStatus | None = None,
     mine_admin_id: int | None = None,
+    sort: JobSort = "newest",
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[Job], int]:
@@ -109,8 +126,16 @@ def list_jobs(
     if experience_level:
         query = query.filter(Job.experience_level == experience_level)
 
-    total = query.count()
-    page = max(page, 1)
-    page_size = min(max(page_size, 1), 100)
-    items = query.order_by(Job.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
-    return items, total
+    if employment_type:
+        query = query.filter(Job.employment_type == employment_type)
+
+    if domain:
+        query = query.filter(Job.domain.ilike(f"%{domain.strip()}%"))
+
+    order = {
+        "newest": Job.created_at.desc(),
+        "oldest": Job.created_at.asc(),
+        "title": Job.title.asc(),
+    }.get(sort, Job.created_at.desc())
+
+    return paginate(query.order_by(order), page, page_size)

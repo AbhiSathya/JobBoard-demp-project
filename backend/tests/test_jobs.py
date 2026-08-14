@@ -62,7 +62,7 @@ def test_get_missing_job_404(client):
 
 
 def test_browse_defaults_to_open_only(client, admin_token):
-    open_job = make_job(client, admin_token, title="Open Role").json()
+    make_job(client, admin_token, title="Open Role")
     closed_job = make_job(client, admin_token, title="Closed Role").json()
     client.patch(
         f"/api/jobs/{closed_job['id']}/status", json={"status": "closed"}, headers=auth_headers(admin_token)
@@ -117,7 +117,9 @@ def test_search_empty_input_returns_all_open(client, admin_token):
 def test_owner_can_edit_job(client, admin_token):
     created = make_job(client, admin_token).json()
     resp = client.patch(
-        f"/api/jobs/{created['id']}", json={"title": "Senior Backend Engineer"}, headers=auth_headers(admin_token)
+        f"/api/jobs/{created['id']}",
+        json={"title": "Senior Backend Engineer"},
+        headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     assert resp.json()["title"] == "Senior Backend Engineer"

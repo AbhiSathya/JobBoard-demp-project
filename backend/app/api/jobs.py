@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.deps import CurrentAdmin
-from app.models.enums import ExperienceLevel, JobStatus
+from app.core.deps import CurrentAdmin, VerifiedAdmin
+from app.models.enums import EmploymentType, ExperienceLevel, JobStatus
 from app.schemas.job import JobCreate, JobListResponse, JobOut, JobStatusUpdate, JobUpdate
-from app.services.jobs import create_job, get_job, list_jobs, set_job_status, update_job
+from app.services.jobs import JobSort, create_job, get_job, list_jobs, set_job_status, update_job
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -19,7 +19,10 @@ def browse_jobs(
     skills: str | None = Query(default=None, description="Comma-separated skill list"),
     location: str | None = None,
     experience_level: ExperienceLevel | None = None,
+    employment_type: EmploymentType | None = None,
+    domain: str | None = None,
     status: JobStatus | None = None,
+    sort: JobSort = "newest",
     page: int = 1,
     page_size: int = 20,
 ) -> JobListResponse:
@@ -30,7 +33,10 @@ def browse_jobs(
         skills=skills_list,
         location=location,
         experience_level=experience_level,
+        employment_type=employment_type,
+        domain=domain,
         status=status,
+        sort=sort,
         page=page,
         page_size=page_size,
     )
@@ -44,17 +50,27 @@ def my_jobs(
     admin: CurrentAdmin,
     db: Annotated[Session, Depends(get_db)],
     status: JobStatus | None = None,
+    search: str | None = None,
+    sort: JobSort = "newest",
     page: int = 1,
     page_size: int = 20,
 ) -> JobListResponse:
-    items, total = list_jobs(db, mine_admin_id=admin.id, status=status, page=page, page_size=page_size)
+    items, total = list_jobs(
+        db,
+        mine_admin_id=admin.id,
+        status=status,
+        search=search,
+        sort=sort,
+        page=page,
+        page_size=page_size,
+    )
     return JobListResponse(
         items=[JobOut.model_validate(j) for j in items], total=total, page=page, page_size=page_size
     )
 
 
 @router.post("", response_model=JobOut, status_code=201)
-def post_job(data: JobCreate, admin: CurrentAdmin, db: Annotated[Session, Depends(get_db)]) -> JobOut:
+def post_job(data: JobCreate, admin: VerifiedAdmin, db: Annotated[Session, Depends(get_db)]) -> JobOut:
     job = create_job(db, admin, data)
     return JobOut.model_validate(job)
 

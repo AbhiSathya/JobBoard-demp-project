@@ -26,7 +26,13 @@ def make_job(client, token, **overrides):
 
 
 def make_profile(client, token, **overrides):
-    payload = {"name": "Candidate", "skills": ["Python"], "education": [], "projects": [], "domain_interests": []}
+    payload = {
+        "name": "Candidate",
+        "skills": ["Python"],
+        "education": [],
+        "projects": [],
+        "domain_interests": [],
+    }
     payload.update(overrides)
     return client.put("/api/candidates/me/profile", json=payload, headers=auth_headers(token))
 
@@ -48,11 +54,11 @@ def test_analytics_reflects_real_applications(client, admin_token):
     make_profile(client, c1, skills=["Python", "SQL"])
     make_profile(client, c2, skills=["Python", "Go"])
     client.post("/api/applications", json={"job_id": job["id"]}, headers=auth_headers(c1))
-    app2 = client.post(
-        "/api/applications", json={"job_id": job["id"]}, headers=auth_headers(c2)
-    ).json()
+    app2 = client.post("/api/applications", json={"job_id": job["id"]}, headers=auth_headers(c2)).json()
     client.patch(
-        f"/api/applications/{app2['id']}/status", json={"status": "shortlisted"}, headers=auth_headers(admin_token)
+        f"/api/applications/{app2['id']}/status",
+        json={"status": "shortlisted"},
+        headers=auth_headers(admin_token),
     )
 
     resp = client.get("/api/admin/analytics", headers=auth_headers(admin_token))
@@ -60,7 +66,9 @@ def test_analytics_reflects_real_applications(client, admin_token):
 
     assert body["total_jobs"] == 1
     assert body["total_applications"] == 2
-    assert body["applications_per_job"] == [{"job_id": job["id"], "job_title": "Backend Engineer", "count": 2}]
+    assert body["applications_per_job"] == [
+        {"job_id": job["id"], "job_title": "Backend Engineer", "count": 2, "status": "open"}
+    ]
     assert body["pipeline_counts"] == {"applied": 1, "shortlisted": 1, "rejected": 0}
 
     skills = {row["skill"]: row["count"] for row in body["skill_distribution"]}

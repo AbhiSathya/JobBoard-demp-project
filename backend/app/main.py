@@ -11,18 +11,23 @@ from app.api.match import router as match_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.middleware import REQUEST_ID_HEADER, RequestContextMiddleware
 
 configure_logging()
 settings = get_settings()
 
-app = FastAPI(title="Job Board API", version="0.1.0")
+app = FastAPI(title="Job Board API", version="0.2.0")
 
+# Order matters: CORS is added last so it runs outermost and can attach headers even to
+# responses produced by the layers beneath it.
+app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[REQUEST_ID_HEADER],
 )
 
 register_exception_handlers(app)

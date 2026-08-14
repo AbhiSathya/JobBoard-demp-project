@@ -7,6 +7,7 @@ re-run before a demo without producing duplicates or unique-constraint errors.
 """
 
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -385,6 +386,9 @@ APPLICATIONS = [
 DEMO_PASSWORD = "password123"
 
 
+NOW = datetime.now(UTC).replace(tzinfo=None)
+
+
 def wipe(db) -> None:
     db.query(Application).delete()
     db.query(CandidateProfile).delete()
@@ -402,7 +406,11 @@ def seed() -> None:
         admins = []
         for email, company in COMPANIES:
             admin = User(
-                email=email, password_hash=hash_password(DEMO_PASSWORD), role=Role.admin, company_name=company
+                email=email,
+                password_hash=hash_password(DEMO_PASSWORD),
+                role=Role.admin,
+                company_name=company,
+                email_verified_at=NOW,
             )
             db.add(admin)
             admins.append(admin)
@@ -429,7 +437,12 @@ def seed() -> None:
 
         candidates = []
         for c in CANDIDATES:
-            user = User(email=c["email"], password_hash=hash_password(DEMO_PASSWORD), role=Role.candidate)
+            user = User(
+                email=c["email"],
+                password_hash=hash_password(DEMO_PASSWORD),
+                role=Role.candidate,
+                email_verified_at=NOW,
+            )
             db.add(user)
             db.flush()
             profile = CandidateProfile(
@@ -449,7 +462,7 @@ def seed() -> None:
             candidates.append((user, profile))
         db.flush()
 
-        for cand_idx, job_title, company_idx, status in APPLICATIONS:
+        for offset, (cand_idx, job_title, company_idx, status) in enumerate(APPLICATIONS):
             user, profile = candidates[cand_idx]
             job = jobs_by_key[(company_idx, job_title)]
             snapshot = {
@@ -472,6 +485,10 @@ def seed() -> None:
                     status=status,
                     cover_note=f"I'd love to bring my {profile.skills[0]} experience to this role.",
                     profile_snapshot=snapshot,
+                    # Spread across the last few weeks so "applications over time" on the
+                    # dashboard shows a real trend rather than one spike on seed day.
+                    created_at=NOW - timedelta(days=(len(APPLICATIONS) - offset) * 2),
+                    updated_at=NOW,
                 )
             )
 

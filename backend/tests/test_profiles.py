@@ -22,7 +22,12 @@ def full_profile(**overrides):
         "years_experience": 5,
         "skills": ["Python", "FastAPI", "PostgreSQL"],
         "education": [
-            {"institution": "State University", "degree": "BSc", "field": "Computer Science", "graduation_year": 2019}
+            {
+                "institution": "State University",
+                "degree": "BSc",
+                "field": "Computer Science",
+                "graduation_year": 2019,
+            }
         ],
         "projects": [{"name": "Order Service", "summary": "Rebuilt the checkout API.", "skills": ["Python"]}],
         "preferred_location": "Remote",
@@ -39,7 +44,9 @@ def test_get_profile_404_when_missing(client, candidate_token):
 
 
 def test_create_profile(client, candidate_token):
-    resp = client.put("/api/candidates/me/profile", json=full_profile(), headers=auth_headers(candidate_token))
+    resp = client.put(
+        "/api/candidates/me/profile", json=full_profile(), headers=auth_headers(candidate_token)
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "Jordan Lee"

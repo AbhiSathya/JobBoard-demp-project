@@ -1,120 +1,177 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useNavigate, useParams } from 'react-router-dom'
 import { z } from 'zod'
 import { Button } from '../../components/ui/Button'
-import { Input, Select, Textarea } from '../../components/ui/Field'
-import { ErrorBanner, Spinner } from '../../components/ui/Feedback'
-import { Card, PageHeader } from '../../components/ui/PageHeader'
+import { ChipInput, Input, Select, Textarea } from '../../components/ui/Field'
+import { Skeleton } from '../../components/ui/Feedback'
+import { Card, PageHeader } from '../../components/ui/Surface'
+import { useToast } from '../../components/ui/Toast'
 import { useCreateJob, useJob, useUpdateJob } from '../../hooks/useJobs'
-import { ApiError } from '../../lib/api'
+import { EMPLOYMENT_LABEL, EXPERIENCE_LABEL } from '../../lib/format'
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required.').max(255),
   description: z.string().min(1, 'Description is required.').max(10_000),
-  required_skills: z
-    .string()
-    .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
+  required_skills: z.array(z.string()).min(1, 'Add at least one skill — this is what matching scores against.'),
   experience_level: z.enum(['entry', 'mid', 'senior', 'lead']),
   location: z.string().min(1, 'Location is required.').max(255),
   employment_type: z.enum(['full_time', 'part_time', 'contract', 'internship']),
   domain: z.string().optional(),
 })
 
-type FormValues = z.input<typeof schema>
-type SubmitValues = z.output<typeof schema>
+type FormValues = z.infer<typeof schema>
 
 export function AdminJobFormPage() {
   const { jobId } = useParams()
-  const isEditing = Boolean(jobId)
+  const id = jobId ? Number(jobId) : undefined
+  const isEditing = id !== undefined
   const navigate = useNavigate()
-  const { data: existingJob, isLoading } = useJob(jobId ? Number(jobId) : undefined)
+  const { show } = useToast()
+
+  const { data: existing, isLoading } = useJob(id)
   const createJob = useCreateJob()
-  const updateJob = useUpdateJob(jobId ? Number(jobId) : 0)
+  const updateJob = useUpdateJob(id ?? 0)
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
-    setError,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues, unknown, SubmitValues>({
+  } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { experience_level: 'mid', employment_type: 'full_time', required_skills: '' },
+    defaultValues: {
+      title: '',
+      description: '',
+      required_skills: [],
+      experience_level: 'mid',
+      location: '',
+      employment_type: 'full_time',
+      domain: '',
+    },
   })
 
   useEffect(() => {
-    if (existingJob) {
-      reset({
-        title: existingJob.title,
-        description: existingJob.description,
-        required_skills: existingJob.required_skills.join(', '),
-        experience_level: existingJob.experience_level,
-        location: existingJob.location,
-        employment_type: existingJob.employment_type,
-        domain: existingJob.domain ?? '',
-      })
-    }
-  }, [existingJob, reset])
+    if (!existing) return
+    reset({
+      title: existing.title,
+      description: existing.description,
+      required_skills: existing.required_skills,
+      experience_level: existing.experience_level,
+      location: existing.location,
+      employment_type: existing.employment_type,
+      domain: existing.domain ?? '',
+    })
+  }, [existing, reset])
 
-  async function onSubmit(values: SubmitValues) {
-    try {
-      if (isEditing) {
-        await updateJob.mutateAsync(values)
-      } else {
-        await createJob.mutateAsync(values)
-      }
+  async function onSubmit(values: FormValues) {
+    if (isEditing) {
+      await updateJob.mutateAsync(values)
+      show({ intent: 'success', message: 'Changes saved' })
       navigate('/admin/jobs')
-    } catch (err) {
-      setError('root', { message: err instanceof ApiError ? err.message : 'Could not save this job.' })
+    } else {
+      const job = await createJob.mutateAsync(values)
+      show({
+        intent: 'success',
+        message: `${job.title} posted`,
+        action: { label: 'View', onClick: () => navigate(`/jobs/${job.id}`) },
+      })
+      navigate('/admin/jobs')
     }
   }
 
-  if (isEditing && isLoading) return <Spinner label="Loading job…" />
+  if (isEditing && isLoading) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-96 w-full rounded-lg" />
+      </div>
+    )
+  }
+
+  const skills = watch('required_skills')
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader title={isEditing ? 'Edit Job' : 'Create Job'} />
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        eyebrow="Employer"
+        title={isEditing ? 'Edit posting' : 'New posting'}
+        description="Required skills drive matching — they carry 40 of the 100 points a candidate can score."
+      />
 
-      <Card>
+      <Card className="p-5">
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
-          {errors.root && <ErrorBanner message={errors.root.message ?? 'Something went wrong.'} />}
-          <Input label="Title" required error={errors.title?.message} {...register('title')} />
+          <Input
+            label="Title"
+            placeholder="Senior Backend Engineer"
+            error={errors.title?.message}
+            {...register('title')}
+          />
+
           <Textarea
             label="Description"
-            rows={6}
-            required
+            rows={8}
+            placeholder="What the role does, who it works with, and what success looks like."
             error={errors.description?.message}
             {...register('description')}
           />
-          <Input
-            label="Required skills"
-            hint="Comma-separated, e.g. Python, FastAPI, PostgreSQL"
-            {...register('required_skills')}
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <Select label="Experience level" required {...register('experience_level')}>
-              <option value="entry">Entry</option>
-              <option value="mid">Mid</option>
-              <option value="senior">Senior</option>
-              <option value="lead">Lead</option>
-            </Select>
-            <Select label="Employment type" required {...register('employment_type')}>
-              <option value="full_time">Full-time</option>
-              <option value="part_time">Part-time</option>
-              <option value="contract">Contract</option>
-              <option value="internship">Internship</option>
-            </Select>
-          </div>
-          <Input label="Location" required error={errors.location?.message} {...register('location')} />
-          <Input label="Domain" placeholder="e.g. Healthcare, Fintech" {...register('domain')} />
 
-          <div className="flex gap-3">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving…' : isEditing ? 'Save changes' : 'Create job'}
+          <Controller
+            control={control}
+            name="required_skills"
+            render={({ field }) => (
+              <ChipInput
+                label="Required skills"
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.required_skills?.message}
+                hint={
+                  skills.length
+                    ? `${skills.length} skill${skills.length === 1 ? '' : 's'} — candidates are scored on how many they have.`
+                    : 'Add a skill and press Enter.'
+                }
+                placeholder="Python, PostgreSQL…"
+              />
+            )}
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Select label="Experience level" {...register('experience_level')}>
+              {Object.entries(EXPERIENCE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+            <Select label="Employment type" {...register('employment_type')}>
+              {Object.entries(EMPLOYMENT_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+            <Input
+              label="Location"
+              placeholder="Remote, Berlin…"
+              error={errors.location?.message}
+              {...register('location')}
+            />
+            <Input
+              label="Domain"
+              placeholder="healthcare, fintech…"
+              hint="Optional. Used when a candidate names an industry."
+              {...register('domain')}
+            />
+          </div>
+
+          <div className="mt-2 flex gap-2 border-t border-line pt-4">
+            <Button type="submit" loading={isSubmitting}>
+              {isEditing ? 'Save changes' : 'Post role'}
             </Button>
-            <Button type="button" variant="secondary" onClick={() => navigate('/admin/jobs')}>
+            <Button type="button" variant="ghost" onClick={() => navigate('/admin/jobs')}>
               Cancel
             </Button>
           </div>

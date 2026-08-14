@@ -27,3 +27,10 @@ class ApplicationOut(BaseModel):
     job: JobOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ApplicationListResponse(BaseModel):
+    items: list[ApplicationOut]
+    total: int
+    page: int
+    page_size: int

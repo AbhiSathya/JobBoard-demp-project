@@ -63,7 +63,9 @@ def test_match_ranks_relevant_job_first(client, admin_token, candidate_token):
 
 def test_match_only_considers_open_jobs(client, admin_token, candidate_token):
     job = make_job(client, admin_token, title="Closed Python Role")
-    client.patch(f"/api/jobs/{job['id']}/status", json={"status": "closed"}, headers=auth_headers(admin_token))
+    client.patch(
+        f"/api/jobs/{job['id']}/status", json={"status": "closed"}, headers=auth_headers(admin_token)
+    )
 
     resp = client.post("/api/match", json={"query": "python role"}, headers=auth_headers(candidate_token))
     titles = [r["job"]["title"] for r in resp.json()["results"]]

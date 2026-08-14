@@ -11,14 +11,20 @@ explanation for every match.
 - Create, edit, and list job postings; toggle a job between Open and Closed
 - Review applications per job, inspect the submitted candidate profile
 - Move applications through Applied → Shortlisted / Rejected
-- A dashboard of applications-per-job, skill distribution, and pipeline counts —
-  computed live from the database, never hardcoded
+- A dashboard of pipeline, applications-per-posting, skill demand vs. applicant
+  supply, and applications over time — computed live from the database, never hardcoded
+- Email on every event that matters: a new applicant on your posting, and a status
+  update sent to the candidate when you shortlist or reject
 
 **Candidate**
 - Create and update a profile (skills, education, projects, preferences)
-- Browse jobs with search, skill/location/experience filters that combine predictably
+- Browse jobs with debounced search, skill/location/experience filters that combine
+  predictably, sorting and pagination — all synced to the URL, so a filtered view
+  survives a reload and can be shared
 - Describe a desired role in plain English and get ranked, explained matches
 - Apply to a job with the saved profile; duplicate and closed-job applications are rejected
+- Verify an email address, reset a forgotten password, and stay signed in across an
+  expired access token without noticing
 
 ## Technology stack
 
@@ -32,7 +38,9 @@ explanation for every match.
 | Server state | TanStack Query | Caching, loading/error state, and cache invalidation without hand-rolling all three |
 | Forms | React Hook Form + Zod | Schema-driven validation that mirrors the backend's Pydantic schemas |
 | Styling | Tailwind CSS v4 | One spacing/type/color scale enforced across every page |
-| Charts | Recharts | The dashboard's two bar charts |
+| Charts | Recharts | The dashboard's bar, paired-bar and area charts |
+| Email | stdlib `smtplib` + `email.message` | SMTP, STARTTLS and multipart HTML/text with zero new dependencies. With no SMTP host configured every message is written to the log instead, so the flows are demoable offline |
+| Logging | stdlib `logging` | Per-run file in `backend/logs/`, ANSI colour on a TTY only, a request id threaded through every line via `contextvars` |
 
 No Docker, no Redis, no ORM beyond SQLAlchemy, no component library, no LLM SDK —
 each was left out because nothing in this project's scope needed it.
@@ -40,21 +48,22 @@ each was left out because nothing in this project's scope needed it.
 ## Architecture
 
 ```
-React SPA (Vite, TS)                     FastAPI
-┌──────────────────────────┐             ┌────────────────────────────────┐
-│ pages/  candidate, admin │             │ api/       routers (thin)       │
-│ components/ ui, domain   │             │ schemas/   Pydantic I/O          │
-│ lib/api.ts  fetch client │   HTTP/JSON │ services/  business rules        │
-│ hooks/      TanStack Q   │ ──────────► │ matching/  intent, score, explain│
-│ auth ctx (JWT in localStorage) │       │ models/    SQLAlchemy 2.0         │
-└──────────────────────────┘             │ core/      config, errors, deps, logging │
-                                          └───────────────┬──────────────────┘
-                                                ┌──────────┴─────────┐
-                                             SQLite               OpenRouter
-                                          (SQLAlchemy           (optional; a
-                                           + Alembic)          deterministic
-                                                                fallback runs
-                                                                without it)
+React SPA (Vite, TS)                      FastAPI
+┌─────────────────────────────────┐      ┌───────────────────────────────────┐
+│ pages/       candidate, admin   │      │ api/        routers (thin)        │
+│ components/  ui, layout, domain │      │ schemas/    Pydantic I/O          │
+│ lib/api.ts   fetch client       │ HTTP │ services/   business rules, mail  │
+│ hooks/       TanStack Query     │ ───► │ matching/   intent, score, explain│
+│ access token in memory,         │      │ models/     SQLAlchemy 2.0        │
+│ refresh token in httpOnly cookie│      │ core/  config, security, logging, │
+└─────────────────────────────────┘      │        mail transport, middleware │
+                                         └──────────────┬────────────────────┘
+                           ┌──────────────────┬─────────┴──────────┐
+                        SQLite            OpenRouter             SMTP
+                     (SQLAlchemy       (optional; a         (optional; with no
+                      + Alembic)        deterministic        host every message
+                                        fallback runs        is written to
+                                        without it)          backend/logs/)
 ```
 
 Routers only do auth, validation, and call one service method. Services own all
@@ -75,7 +84,8 @@ backend/
     services/   business logic, called by routers
   alembic/      migrations
   scripts/seed.py
-  tests/        pytest suite (83 tests)
+  logs/         per-run log files, gitignored
+  tests/        pytest suite (154 tests)
 frontend/
   src/
     components/ ui/ (Button, Field, Badge, Feedback…), layout/, JobCard
@@ -109,21 +119,24 @@ be fuzzy and a part that must be deterministic:
 
 ```
 query ──► extract_intent() ──► MatchIntent{roles, skills, experience, locations, domains, type}
-            ├─ LLM (OpenRouter, strict JSON, 8s timeout, Pydantic-validated)
+            ├─ LLM (OpenRouter, strict JSON, model chain, 12s/call, Pydantic-validated)
             └─ fallback: deterministic keyword extractor (vocabulary built from live job data)
                                     │
 open jobs ─► score_job(intent, profile, job) → ScoreBreakdown   [pure Python, unit-tested]
                                     │
                           rank, band, explain(breakdown)   [built from the breakdown's own facts]
+                                    │
+                    LLM rephrases the top 3 ──► fact-checked ──► kept, or template ships
 ```
 
 - **Intent extraction** (`app/matching/intent.py`, `provider.py`) turns the free-text
-  query into structured fields. If `OPENROUTER_API_KEY` is set, it tries the LLM first
-  (8s timeout); on *any* failure — no key, timeout, non-200, malformed JSON, or a
-  response that fails schema validation — it falls back to a deterministic
-  keyword/regex extractor built from the vocabulary of currently open jobs. This
-  fallback is not a degraded mode kept around for emergencies: it's exercised by
-  every test and is what runs the whole match pipeline when no key is configured.
+  query into structured fields. If `OPENROUTER_API_KEY` is set, it tries each configured
+  model in turn (12s per call, inside an 18s budget for the whole request); on *any*
+  failure — no key, timeout, non-200, empty content, malformed JSON, or a response that
+  fails schema validation — it falls back to a deterministic keyword/regex extractor
+  built from the vocabulary of currently open jobs. This fallback is not a degraded mode
+  kept around for emergencies: it's exercised by every test, it produces the same
+  ranking as the live path, and it is what runs the whole pipeline when no key is set.
 - **Scoring** (`app/matching/score.py`) is a fixed weighted sum — no model, no
   randomness, fully deterministic and unit-tested:
 
@@ -142,10 +155,21 @@ open jobs ─► score_job(intent, profile, job) → ScoreBreakdown   [pure Pyth
   guess as a genuine recommendation.
 - **Explanations** (`app/matching/explain.py`) are built as sentences read directly off
   the score breakdown ("Matches 4 of 6 required skills (…). Healthcare domain matches
-  your stated interest. Location differs: role is in Berlin.") — never generated by an
-  LLM. This is what makes "avoid inventing skills or facts" a structural guarantee
-  rather than a prompt instruction: there's no path from an explanation string back to
-  anything that wasn't already a field on the breakdown.
+  your stated interest. Location differs: role is in Berlin."). For the top 3 results
+  the model is then asked to rephrase that template into one natural paragraph — and
+  the rewrite is only kept if it passes `app/matching/llm_explain.py`, which checks
+  that every skill, domain and location it names came off the breakdown *and* that it
+  doesn't claim a match for something the breakdown lists as missing. A rewrite that
+  fails either check is discarded and the template ships. That is what makes "never
+  invent skills or facts" a structural guarantee rather than a prompt instruction: the
+  model can change the wording, never the facts, and never the ranking. Each result
+  reports which wording shipped (`explanation_source: "ai" | "rules"`) and the response
+  carries `ai_status` (`live` / `degraded` / `fallback`), so the UI states the truth
+  instead of implying an AI ran when it didn't.
+- **Model chain.** `OPENROUTER_MODELS` is an ordered list of free models; a 404, a 429
+  or a timeout on one falls through to the next, and the model that last answered is
+  tried first next time. The whole AI path runs under a total budget (18s), so a
+  rate-limited provider can slow a match down but never hang it.
 - **What affects ranking:** the candidate's saved profile skills/experience/location/domain
   fill in whatever the query didn't state — a candidate who says "senior Python role"
   still gets domain and location credit from their profile. Only currently `open` jobs
@@ -163,9 +187,14 @@ open jobs ─► score_job(intent, profile, job) → ScoreBreakdown   [pure Pyth
 
 1. One admin account maps to one company (`company_name`, set at registration); an
    admin only sees and edits their own jobs. Candidates browse jobs from every company.
-2. Auth is real JWT (scrypt-hashed passwords, 12h tokens) but intentionally minimal —
-   no refresh tokens, no password reset, no email verification. This is a project-scope
-   decision, not a production auth system; see Known limitations.
+2. Auth is real JWT with scrypt-hashed passwords. Every token carries a `typ` claim
+   (`access` 15 min, `refresh` 14 days, `verify` 24 h, `reset` 30 min) and is rejected
+   if presented as the wrong type, so a reset link can't be replayed as a session. The
+   refresh token lives in an httpOnly SameSite=Lax cookie; the access token stays in
+   memory in the SPA and is refreshed silently on the first 401. A completed password
+   reset bumps the user's `token_version`, invalidating every outstanding refresh and
+   reset token at once. Unverified users can sign in and browse — verification only
+   gates applying and posting, so no demo is ever blocked on a mail server.
 3. `education` / `projects` are JSON on the candidate profile, not separate tables — see
    Data model above for the reasoning and upgrade path.
 4. An application freezes the candidate's profile at submit time (`profile_snapshot`).
@@ -177,19 +206,19 @@ open jobs ─► score_job(intent, profile, job) → ScoreBreakdown   [pure Pyth
 
 ## Known limitations
 
-- No refresh tokens / password reset / email verification.
-- Matching is keyword/rule-based by default, augmented by an LLM only for parsing the
-  query and only when a key is configured — see AI-matching design above.
-- No pagination UI on the jobs list (the API supports `page`/`page_size`; the frontend
-  currently renders one page).
-- Frontend bundle is a single chunk (~227 KB gzipped) — fine at this app's size; would
+- Skill and domain matching is keyword-based, not semantic — "JS" won't match
+  "JavaScript" unless both strings appear.
+- Email is sent inline over SMTP from a background task. No queue, no retry: a send
+  that fails is logged and dropped rather than retried later.
+- Rate limiting exists nowhere — a determined client can hammer `/api/match`.
+- Frontend bundle is a single chunk (~253 KB gzipped) — fine at this app's size; would
   code-split before it grew much further.
 
 ## Future improvements
 
 - Embedding-based semantic skill/domain matching
 - Postgres + connection pooling for real concurrent load
-- Refresh tokens, password reset, recruiter teams per company
+- Recruiter teams per company
 - Interview scheduling and internal application notes
 - Rate limiting and audit logging on write endpoints
 
@@ -205,6 +234,41 @@ open jobs ─► score_job(intent, profile, job) → ScoreBreakdown   [pure Pyth
 
 Everything below works identically on Windows (PowerShell) and Ubuntu (bash); the
 only difference is the virtualenv activation command, called out where it applies.
+
+### The short way
+
+```bash
+./dev.sh            # Linux / macOS
+```
+```powershell
+.\dev.ps1           # Windows
+```
+
+One command for the whole stack. It resolves paths from its own location (so it works
+from any directory), refuses to start if port 8000 or 5173 is already taken and tells you
+what to do about it, creates `backend/.env` from the example if it is missing, applies
+migrations, then runs both servers with their output interleaved and prefixed `[api]` /
+`[web]`. **Ctrl-C stops both** — including uvicorn's reloader child and npm's, which are
+what usually get orphaned and hold a port. If either server dies on its own, the other is
+shut down rather than left half-running.
+
+First run on a clean machine, or to reinstall dependencies:
+
+```bash
+./dev.sh --setup           # creates backend/.venv, pip install -e ".[dev]", npm install
+.\dev.ps1 -Setup           # same on Windows
+```
+
+Other ports: `API_PORT=8001 WEB_PORT=5174 ./dev.sh`, or `.\dev.ps1 -ApiPort 8001
+-WebPort 5174`.
+
+Wrapper logs land in `logs/dev-api.log` and `logs/dev-web.log` (gitignored). The
+application's own structured log is unchanged, in `backend/logs/`.
+
+If PowerShell refuses to run the script — *"running scripts is disabled on this system"* —
+use `powershell -ExecutionPolicy Bypass -File .\dev.ps1`.
+
+The rest of this section is the same thing done by hand, which is worth reading once.
 
 ### 1. Backend
 
@@ -236,6 +300,77 @@ copy .env.example .env      # Windows
 Open `.env` and set `JWT_SECRET` to your own random string. `OPENROUTER_API_KEY` is
 optional — leave it blank and AI matching runs entirely on the deterministic fallback
 described above. Get a free key at https://openrouter.ai/keys if you want the LLM path.
+
+`SMTP_HOST` is also optional. **Leave it unset and every email — verification links,
+password resets, application notifications — is written in full to
+`backend/logs/jobboard-<timestamp>.log` instead of being sent**, so the whole flow is
+usable on a laptop with no mail account, and dummy addresses work fine. Set the `SMTP_*`
+block to send for real; nothing else changes.
+
+That means you confirm an address by pulling the link out of the log:
+
+```bash
+# after registering — the verification link
+grep -o 'http://localhost:5173/verify-email?token=[A-Za-z0-9._-]*' backend/logs/*.log | tail -1
+
+# after "forgot password" — the reset link
+grep -o 'http://localhost:5173/reset-password?token=[A-Za-z0-9._-]*' backend/logs/*.log | tail -1
+
+# or just watch them arrive while you click
+tail -f backend/logs/jobboard-*.log
+```
+
+Verification links last 24 hours (`VERIFY_TOKEN_HOURS`), reset links 30 minutes
+(`RESET_TOKEN_MINUTES`) and are single-use. `POST /api/auth/resend-verification` issues a
+fresh one. Unverified users can still sign in and browse — verification only gates
+applying and posting — so a missing mail server never blocks a demo.
+
+### A note on the OpenRouter free tier
+
+Free models share a **per-day request quota on the account** — 50/day without credits,
+1000/day once $10 of credit is added. Each match request spends up to two of them (one to
+parse the query, one to rewrite the explanations). Exhaust it and every model in the chain
+returns `429`, the deterministic path takes over, and the response comes back in about
+half a second with `ai_status: fallback` and identical ranking — which is the fallback
+working, not a failure. It looks like this in the log:
+
+```
+WARNING | AI model google/gemma-4-26b-a4b-it:free unusable, trying next: HTTP 429:
+         "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000..."
+WARNING | AI intent extraction failed, using deterministic result
+INFO    | POST /api/match -> 200 in 553.0ms
+```
+
+Before a live demo: run one match and check the header says *Matched with {model}*. If it
+says *Matched offline*, the quota is spent — it resets at 00:00 UTC. Setting
+`AI_EXPLANATIONS=false` halves the spend per request.
+
+### Environment variables
+
+Every one has a working default except `JWT_SECRET`; the file to copy is `.env.example`.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `DATABASE_URL` | `sqlite:///./jobboard.db` | Any SQLAlchemy URL; Postgres is a string change |
+| `JWT_SECRET` | dev placeholder | **Set this.** Signs every token |
+| `ACCESS_TOKEN_MINUTES` | `15` | Access-token lifetime. Set to `1` to watch the silent refresh work |
+| `REFRESH_TOKEN_DAYS` | `14` | Refresh-cookie lifetime |
+| `VERIFY_TOKEN_HOURS` / `RESET_TOKEN_MINUTES` | `24` / `30` | Email link lifetimes |
+| `COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
+| `FRONTEND_BASE_URL` | `http://localhost:5173` | Where the emailed links point |
+| `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON array or comma-separated; credentials are allowed, so it can't be `*` |
+| `OPENROUTER_API_KEY` | empty | Empty → the deterministic path runs and `ai_status` reports `fallback` |
+| `OPENROUTER_MODELS` | 4 free models | Comma-separated, tried in order |
+| `AI_TIMEOUT_SECONDS` | `12` | Per-call cap, inside an 18s total AI budget |
+| `AI_EXPLANATIONS` | `true` | `false` skips the rewrite call — roughly halves match latency, keeps the ranking identical |
+| `SMTP_HOST` / `PORT` / `USER` / `PASSWORD` | unset | Unset → mail goes to the log instead of the network |
+| `SMTP_FROM` | `Job Board <no-reply@jobboard.local>` | From header |
+
+Logs land in `backend/logs/`, one file per run named `jobboard-YYYY-MM-DD_HH-MM-SS.log`,
+with the 30 most recent runs kept. Every line carries the request id that is also
+returned as the `X-Request-ID` header and in error bodies, so a reported error maps
+straight to its log lines. The console mirror is colour-coded by level, and drops the
+colour automatically when stdout isn't a TTY.
 
 Database — run the migration to create `jobboard.db`:
 ```bash
@@ -287,9 +422,18 @@ Or register a new account from the app — role is chosen at signup (`/register`
 cd backend
 pytest -q
 ```
-83 tests covering auth, jobs, profiles, applications and their business rules,
-matching (scoring, intent extraction, the full AI-provider failure matrix), and
-analytics.
+154 tests covering auth (token types, refresh rotation, `token_version`
+invalidation), the email flows (verification, reset single-use, resend,
+enumeration-safety — asserted against an in-memory outbox, never a real SMTP server),
+jobs, profiles, applications and their business rules, matching (scoring, intent
+extraction, explanation grounding, the full AI-provider failure matrix), and analytics.
+
+One test is skipped by default because it calls the real OpenRouter API. Run it by
+hand before a demo to prove the key and the model chain are live:
+
+```bash
+RUN_LIVE_AI=1 pytest tests/test_live_openrouter.py -v
+```
 
 ### Lint, format, typecheck, build
 

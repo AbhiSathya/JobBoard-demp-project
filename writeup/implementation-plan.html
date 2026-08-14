@@ -149,7 +149,7 @@
 <ol>
 <li>One admin account maps to one company (set at registration); an admin sees and edits only their own jobs. Candidates browse open jobs from all companies.</li>
 <li>Education and project summaries are stored as JSON columns on the candidate profile, not separate tables — they are only ever read as part of the whole profile, never queried independently.</li>
-<li>JWT auth is real but minimal: no refresh tokens, no email verification, no password reset. Tokens last 12 hours and live in <code>localStorage</code>.</li>
+<li>JWT auth carries a <code>typ</code> claim per purpose: access (15 min, held in memory), refresh (14 days, httpOnly cookie), verify (24 h) and reset (30 min). A completed password reset bumps the user's <code>token_version</code>, invalidating every outstanding refresh and reset token at once.</li>
 <li>An application stores a snapshot of the candidate's profile at submit time, so later profile edits don't rewrite what the admin reviewed.</li>
 <li>AI matching considers only jobs with <code>status = open</code>.</li>
 <li>Application status pipeline: <code>applied → shortlisted | rejected</code>, <code>shortlisted → rejected</code>. <code>rejected</code> is terminal. Any other transition returns an error naming the allowed set.</li>
@@ -162,7 +162,7 @@
 <div class="tablewrap">
 <table>
 <tr><th>Risk</th><th>Handling</th></tr>
-<tr><td>OpenRouter free tier rate-limits or hangs mid-demo</td><td>LLM is never on the critical path: 8-second timeout, deterministic fallback for both intent extraction and explanation. The demo is tested with the key removed entirely.</td></tr>
+<tr><td>OpenRouter free tier rate-limits or hangs mid-demo</td><td>LLM is never on the critical path: 12s per call inside an 18s total budget, an ordered model chain, and a deterministic fallback for both intent extraction and explanation. The demo is tested with the key removed entirely.</td></tr>
 <tr><td>LLM invents a skill or fact in an explanation</td><td>Explanations are template-built from the score breakdown by default. An optional LLM rewrite is checked against the breakdown's facts and discarded if it adds anything new.</td></tr>
 <tr><td>Native dependency fails to install on Windows</td><td>Passwords hashed with <code>hashlib.scrypt</code> (standard library) instead of bcrypt/passlib. SQLite driver is standard library. No native wheels anywhere in the dependency list.</td></tr>
 <tr><td>Ranking logic is hand-wavy under questioning</td><td>Every score is a breakdown with per-component values, returned by the API and shown in the UI. The weights are pinned by unit tests.</td></tr>
@@ -193,7 +193,7 @@
 <section>
 <h2 class="label">AI matching workflow</h2>
 <pre><code>query --> extract_intent() --> MatchIntent{roles, skills, experience, locations, domains, type}
-            +- LLM (OpenRouter, strict JSON, 8s timeout, Pydantic-validated)
+            +- LLM (OpenRouter, strict JSON, model chain, 12s/call, Pydantic-validated)
             +- fallback: deterministic keyword extractor (vocab from DB distinct values)
                                   |
 profile --> merge_intent() -------+  query wins; profile fills gaps at 0.6 weight
@@ -313,7 +313,6 @@ GET    /api/admin/analytics            (admin)</code></pre>
 <ul>
 <li>vitest coverage for the match page and job filters</li>
 <li>Accessibility pass with keyboard-only navigation</li>
-<li>Pagination on the jobs list</li>
 <li>ruff/eslint in a pre-commit hook</li>
 </ul>
 
@@ -321,7 +320,6 @@ GET    /api/admin/analytics            (admin)</code></pre>
 <ul>
 <li>Embeddings-based semantic matching with a vector store</li>
 <li>Postgres with connection pooling</li>
-<li>Refresh tokens and password reset</li>
 <li>Recruiter/company multi-user teams</li>
 <li>Application notes and interview scheduling</li>
 <li>Learning-to-rank tuned on real click/hire outcomes</li>

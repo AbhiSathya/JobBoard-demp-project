@@ -95,6 +95,27 @@ def test_domain_mismatch_scores_zero_when_stated():
     assert breakdown.domain_matched is False
 
 
+def test_a_stated_domain_overrides_the_profiles_interests():
+    """Naming a domain in the query has to beat a standing profile interest — otherwise
+    a fintech role scores full domain marks for someone who just asked for healthcare,
+    and then gets explained as "matches your stated interest"."""
+    profile = ProfileFacts(skills=[], domain_interests=["fintech"])
+    intent = MatchIntent(domains=["healthcare"])
+
+    fintech = score_job(intent, profile, make_job(domain="fintech"))
+    healthcare = score_job(intent, profile, make_job(domain="healthcare"))
+
+    assert fintech.domain_score == 0.0
+    assert fintech.domain_matched is False
+    assert healthcare.domain_matched is True
+
+
+def test_profile_interests_still_apply_when_the_query_names_no_domain():
+    profile = ProfileFacts(skills=[], domain_interests=["fintech"])
+    breakdown = score_job(MatchIntent(), profile, make_job(domain="fintech"))
+    assert breakdown.domain_matched is True
+
+
 def test_job_with_no_required_skills_is_neutral():
     breakdown = score_job(MatchIntent(skills=["Python"]), None, make_job(required_skills=[]))
     assert breakdown.skills_score == 0.5
@@ -116,7 +137,10 @@ def test_weights_sum_to_100():
         SKILLS_WEIGHT,
     )
 
-    assert SKILLS_WEIGHT + ROLE_WEIGHT + DOMAIN_WEIGHT + EXPERIENCE_WEIGHT + LOCATION_WEIGHT + EMPLOYMENT_WEIGHT == 100
+    assert (
+        SKILLS_WEIGHT + ROLE_WEIGHT + DOMAIN_WEIGHT + EXPERIENCE_WEIGHT + LOCATION_WEIGHT + EMPLOYMENT_WEIGHT
+        == 100
+    )
 
 
 def test_ranking_order_is_deterministic():

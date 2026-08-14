@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -14,6 +14,13 @@ if TYPE_CHECKING:
 
 class Job(Base):
     __tablename__ = "jobs"
+    # Composite indexes shaped like the queries that actually run: the public browse
+    # filters on status then orders by created_at, and the admin list filters on owner.
+    __table_args__ = (
+        Index("ix_jobs_status_created_at", "status", "created_at"),
+        Index("ix_jobs_admin_id_status", "admin_id", "status"),
+        Index("ix_jobs_experience_level", "experience_level"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     admin_id: Mapped[int] = mapped_column(ForeignKey("users.id"))

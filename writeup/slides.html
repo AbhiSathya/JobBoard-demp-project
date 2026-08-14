@@ -140,7 +140,7 @@
     <text x="40" y="122" font-size="14">hooks/ TanStack Query</text>
     <text x="40" y="149" font-size="14">lib/ api client, auth context</text>
     <text x="40" y="176" font-size="14">components/ ui system</text>
-    <text x="40" y="230" class="muted" font-size="12">JWT in localStorage</text>
+    <text x="40" y="230" class="muted" font-size="12">access token in memory</text>
 
     <line x1="350" y1="145" x2="420" y2="145" class="accent-stroke" stroke-width="2" marker-end="url(#arrow)"/>
     <text x="355" y="135" class="mono muted" font-size="10">HTTP / JSON</text>
@@ -250,10 +250,10 @@
     <div class="panel">
       <p class="kicker" style="margin-bottom:0.6rem;">What runs where</p>
       <ul class="points">
-        <li><b>LLM (optional):</b> parses free text into structured intent — 8s timeout</li>
+        <li><b>LLM (optional):</b> parses free text into structured intent, then rephrases the explanation — 12s per call inside an 18s total budget, with an ordered model fallback</li>
         <li><b>Deterministic fallback:</b> keyword extraction, runs the whole demo if the key is absent, times out, or the response is malformed</li>
         <li><b>Scorer:</b> pure Python, no I/O, 25 unit tests pin the weights and ranking order</li>
-        <li><b>Explanation:</b> assembled from the score breakdown's own fields — cannot state a skill or fact that isn't real</li>
+        <li><b>Explanation:</b> assembled from the score breakdown's own fields, then optionally rephrased by the model — the rewrite is discarded unless every fact in it came off the breakdown, and each card says which wording shipped</li>
       </ul>
     </div>
   </div>
