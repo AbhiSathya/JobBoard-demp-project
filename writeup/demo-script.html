@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Demo Script & Presenter Notes — Job Board with AI-Powered Candidate Matching</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --ink: #16181d; --paper: #f7f7f5; --paper-2: #ffffff; --accent: #2a5bd7;
+    --accent-soft: #e8edfb; --line: #dcdcd8; --muted: #6b6f76;
+    --good: #0ca30c; --amber: #b9790a; --red: #c73a3a;
+    --display: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --body: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    --mono: Consolas, "SF Mono", "Cascadia Code", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #eeeeec; --paper: #15161a; --paper-2: #1c1e24; --accent: #7ea2ff;
+      --accent-soft: #202a44; --line: #33353c; --muted: #9a9ca3;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #eeeeec; --paper: #15161a; --paper-2: #1c1e24; --accent: #7ea2ff;
+    --accent-soft: #202a44; --line: #33353c; --muted: #9a9ca3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--paper); color: var(--ink); font-family: var(--body); line-height: 1.6; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 4rem 1.5rem 6rem; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 2rem; margin-bottom: 2.5rem; }
+  .kicker { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 0.8rem; display: flex; align-items: center; gap: 0.6rem; }
+  .kicker::before { content: ""; width: 1.4rem; height: 2px; background: var(--accent); }
+  h1 { font-family: var(--display); font-weight: 400; font-size: 2rem; line-height: 1.15; margin: 0 0 0.6rem; text-wrap: balance; }
+  .sub { color: var(--muted); font-size: 1rem; margin: 0; }
+  h2 { font-family: var(--display); font-weight: 400; font-size: 1.5rem; margin: 3rem 0 1rem; border-top: 1px solid var(--line); padding-top: 2rem; }
+  h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  h3 { font-size: 1.02rem; font-weight: 600; margin: 1.6rem 0 0.5rem; }
+  p { margin: 0.7rem 0; }
+  .say {
+    background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 0.9rem 1.2rem;
+    margin: 0.9rem 0; font-style: italic; border-radius: 0 3px 3px 0;
+  }
+  .say::before { content: "SAY: "; font-style: normal; font-family: var(--mono); font-size: 0.7rem;
+    letter-spacing: 0.06em; color: var(--accent); font-weight: 700; }
+  .do {
+    background: var(--paper-2); border: 1px solid var(--line); padding: 0.9rem 1.2rem; margin: 0.6rem 0;
+    border-radius: 3px; font-size: 0.95rem;
+  }
+  .do::before { content: "DO: "; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em;
+    color: var(--muted); font-weight: 700; }
+  ol.walk { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  ol.walk > li { counter-increment: step; margin-bottom: 1.8rem; padding-left: 2.6rem; position: relative; }
+  ol.walk > li::before {
+    content: counter(step, decimal-leading-zero); position: absolute; left: 0; top: 0;
+    font-family: var(--mono); font-weight: 700; color: var(--accent); font-size: 0.95rem;
+  }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--accent-soft); color: var(--accent);
+    padding: 0.1em 0.4em; border-radius: 2px; }
+  .cred-table, .qa-table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.92rem; }
+  .cred-table th, .qa-table th { text-align: left; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted); padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line); }
+  .cred-table td { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line); }
+  .cred-table td:nth-child(2), .cred-table td:nth-child(3) { font-family: var(--mono); font-size: 0.85rem; }
+  dl.qa { margin: 0; }
+  dl.qa dt { font-weight: 600; margin-top: 1.3rem; }
+  dl.qa dd { margin: 0.3rem 0 0; color: var(--ink); }
+  .checklist { list-style: none; margin: 0; padding: 0; }
+  .checklist li { padding: 0.55rem 0 0.55rem 1.9rem; border-bottom: 1px solid var(--line); position: relative; }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: ""; position: absolute; left: 0; top: 0.7rem; width: 1.05rem; height: 1.05rem;
+    border: 1.5px solid var(--muted); border-radius: 3px;
+  }
+  .result-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.4rem 0;
+    border-bottom: 1px dashed var(--line); font-size: 0.92rem; }
+  .band { font-family: var(--mono); font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 3px; }
+  .band.strong { background: #e6f6e6; color: var(--good); }
+  .band.good { background: var(--accent-soft); color: var(--accent); }
+  .band.fair { background: #fbf1e0; color: var(--amber); }
+  .note { background: var(--paper-2); border: 1px solid var(--line); border-left: 3px solid var(--amber);
+    padding: 0.8rem 1.1rem; margin: 1rem 0; font-size: 0.9rem; border-radius: 0 3px 3px 0; }
+  .foot { border-top: 1px solid var(--line); margin-top: 3.5rem; padding-top: 1.2rem; font-family: var(--mono);
+    font-size: 0.72rem; color: var(--muted); }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+
+<header>
+  <p class="kicker">Presenter Notes</p>
+  <h1>Demo Script — Job Board with AI-Powered Candidate Matching</h1>
+  <p class="sub">Read this during the Teams call. Everything below was run against the real seeded database before this document was written — the numbers are real, not illustrative.</p>
+</header>
+
+<h2>Opening (30 seconds)</h2>
+<div class="say">
+  This is a job board with one differentiator: instead of filtering, a candidate describes
+  the job they want in a sentence, and the system ranks every open role against that
+  sentence with a score and a plain-English reason. I'll walk through the candidate side,
+  then the admin side, then the matching engine itself.
+</div>
+
+<h2>Demo order</h2>
+
+<ol class="walk">
+  <li>
+    <h3>Log in as a candidate</h3>
+    <div class="do">Log in as <code>amara.okafor@example.com</code> / <code>password123</code>.</div>
+    <div class="say">Amara's profile is already filled in — 7 years, Go/PostgreSQL/Kafka/AWS, based in London, interested in fintech. That's what "saved profile" means here — it's used automatically wherever it's useful.</div>
+  </li>
+
+  <li>
+    <h3>Browse and filter</h3>
+    <div class="do">Go to <b>Browse Jobs</b>. Filter by skill <code>python</code>, then add location <code>remote</code>. Show the filters combining, then hit <b>Reset filters</b>.</div>
+  </li>
+
+  <li>
+    <h3>The AI match — the main event</h3>
+    <div class="do">Go to <b>AI Match</b>. Type: <code>senior backend engineer in fintech, London</code></div>
+    <div class="say">Watch what comes back — not just a list, three different confidence levels on the same query, and every one of them is explained.</div>
+    <p>Real output from this exact query against the seeded data:</p>
+    <div class="result-row"><span><b>Staff Backend Engineer</b> — FinFlow</span><span class="band strong">strong · 70.3</span></div>
+    <div class="result-row"><span><b>Backend Engineer</b> — FinFlow</span><span class="band good">good · 64.3</span></div>
+    <div class="result-row"><span><b>Senior Data Engineer</b> — Acme Health</span><span class="band fair">fair · 48.3</span></div>
+    <div class="say">"Matches all 4 required skills. Fintech domain matches your stated interest. Location matches your preference." That sentence is built directly from the score, not generated freely — it can't say something that isn't true of the actual data.</div>
+  </li>
+
+  <li>
+    <h3>A vague query</h3>
+    <div class="do">Type: <code>something good please</code></div>
+    <div class="say">The system flags this as low-confidence rather than pretending it understood — that's a deliberate UI signal, not a silent failure.</div>
+  </li>
+
+  <li>
+    <h3>Apply</h3>
+    <div class="do">Open the top result, add a short cover note, click <b>Apply now</b>. Then click it again — or go to <b>My Applications</b> to show the duplicate is blocked server-side, not just hidden in the UI.</div>
+  </li>
+
+  <li>
+    <h3>Switch to admin</h3>
+    <div class="do">Log out. Log in as <code>admin@finflow.com</code> / <code>password123</code>.</div>
+  </li>
+
+  <li>
+    <h3>Manage a listing</h3>
+    <div class="do">Go to <b>Jobs</b> → open <b>Staff Backend Engineer</b> → <b>Edit</b> → change something small → <b>Save</b>. Then <b>Close</b> it from the list.</div>
+    <div class="say">A closed job is immediately excluded from AI matching and from a candidate trying to apply — that's enforced in the same service function, not duplicated in two places.</div>
+  </li>
+
+  <li>
+    <h3>Review an application</h3>
+    <div class="do">Open <b>Applications</b> for a job with a submitted application. Click the row to expand the candidate's full profile snapshot. Click <b>Shortlist</b>.</div>
+  </li>
+
+  <li>
+    <h3>Dashboard</h3>
+    <div class="do">Go to <b>Dashboard</b>. Point at the applications-per-job chart and the skill distribution chart.</div>
+    <div class="say">Every number here comes from the rows we just created — there's no seeded or hardcoded dashboard state.</div>
+  </li>
+</ol>
+
+<h2>Demo credentials</h2>
+<table class="cred-table">
+  <tr><th>Role</th><th>Email</th><th>Password</th></tr>
+  <tr><td>Admin — FinFlow</td><td>admin@finflow.com</td><td>password123</td></tr>
+  <tr><td>Admin — Acme Health</td><td>admin@acmehealth.com</td><td>password123</td></tr>
+  <tr><td>Candidate</td><td>amara.okafor@example.com</td><td>password123</td></tr>
+  <tr><td>Candidate</td><td>jordan.lee@example.com</td><td>password123</td></tr>
+</table>
+
+<h2>Likely interview questions</h2>
+<dl class="qa">
+  <dt>Why isn't the ranking done entirely by the LLM?</dt>
+  <dd>The brief explicitly warns against putting essential ranking logic inside an untestable prompt. A weighted scorer is deterministic, unit-tested (25 tests pin the weights and ordering), and — critically for this evaluation — explainable in this conversation without hand-waving. The LLM is used only where fuzziness is the actual job: turning a sentence into structured fields.</dd>
+
+  <dt>What happens if OpenRouter is down or the key is missing?</dt>
+  <dd>The provider call has an 8-second timeout and every failure mode — no key, timeout, non-200, malformed JSON, schema-invalid JSON — falls back to a deterministic keyword extractor. This isn't a rarely-tested escape hatch: it's what's running in this demo right now, since no key is configured in this environment, and it's covered by the AI-provider failure-matrix tests in <code>test_matching_provider.py</code>.</dd>
+
+  <dt>How do you stop the explanation from inventing a skill the candidate doesn't have?</dt>
+  <dd>The explanation is assembled in Python from fields already on the score breakdown — matched skills, missing skills, domain match, location match. There's no LLM call in that path at all, so there's no mechanism by which it could state something the breakdown doesn't contain.</dd>
+
+  <dt>Why SQLite instead of Postgres?</dt>
+  <dd>The stated constraint was "works on Windows and Ubuntu without dependency issues." SQLite's driver ships with Python; Postgres would mean either Docker as a hard prerequisite or asking the evaluator to install and configure a database server before they can run the app. SQLAlchemy + Alembic keep Postgres a connection-string change away if this went to production.</dd>
+
+  <dt>Why scrypt instead of bcrypt for passwords?</dt>
+  <dd>bcrypt/passlib need a compiled native extension, which is the single most common Windows setup failure for Python projects. <code>hashlib.scrypt</code> is memory-hard and ships in the standard library — same security property, zero native dependency.</dd>
+
+  <dt>What's the biggest known limitation?</dt>
+  <dd>Skill and domain matching in the deterministic fallback is exact-keyword (word-boundary, case-insensitive) — "JS" won't match "JavaScript" unless both literal strings appear. With more time, the fallback's matching would move to embedding similarity while keeping the weighted-sum scorer as the actual ranking authority, since that's what stays testable and explainable.</dd>
+
+  <dt>How is admin-only access enforced?</dt>
+  <dd>Every admin route depends on a FastAPI dependency (<code>CurrentAdmin</code>) that checks the JWT's role server-side — not just a hidden button in the UI. Job and application mutations additionally check that the requesting admin owns the job in question; there are explicit tests for a second admin account being rejected with 403.</dd>
+
+  <dt>What would you build next given more time?</dt>
+  <dd>Embedding-based semantic matching for skills/domains, Postgres for real concurrent load, refresh tokens and password reset, and weights learned from real apply/hire outcomes instead of hand-set values.</dd>
+</dl>
+
+<h2>Pre-presentation checklist</h2>
+<ul class="checklist">
+  <li>Fresh database: <code>rm jobboard.db && alembic upgrade head</code></li>
+  <li>Seed data loaded: <code>python -m scripts.seed</code> — confirm it prints 5 companies / 18 jobs / 6 candidates / 13 applications</li>
+  <li>Backend running: <code>uvicorn app.main:app --port 8000</code> — check <code>/api/health</code> returns <code>{"status":"ok"}</code></li>
+  <li>Frontend running: <code>npm run dev</code> — check the app loads at <code>localhost:5173</code></li>
+  <li>Full candidate workflow run once, end to end, right before the call</li>
+  <li>Full admin workflow run once, end to end, right before the call</li>
+  <li>AI match page run once with <code>OPENROUTER_API_KEY</code> unset — confirms the fallback path the demo actually depends on</li>
+  <li>If a key is being used for the call, restore it in <code>.env</code> and restart the backend</li>
+  <li>All code committed — no changes made after this checklist is run</li>
+  <li>This document and the slides open in a second tab, ready to read from</li>
+</ul>
+
+<div class="foot">Prepared for the live technical presentation. Every number and API response quoted above was captured from the running application, not written from memory.</div>
+
+</div>
+</body>
+</html>

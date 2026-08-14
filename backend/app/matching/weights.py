@@ -1,0 +1,21 @@
+SKILLS_WEIGHT = 40
+ROLE_WEIGHT = 20
+DOMAIN_WEIGHT = 15
+EXPERIENCE_WEIGHT = 10
+LOCATION_WEIGHT = 10
+EMPLOYMENT_WEIGHT = 5
+
+_TOTAL_WEIGHT = (
+    SKILLS_WEIGHT + ROLE_WEIGHT + DOMAIN_WEIGHT + EXPERIENCE_WEIGHT + LOCATION_WEIGHT + EMPLOYMENT_WEIGHT
+)
+assert _TOTAL_WEIGHT == 100
+
+STRONG_THRESHOLD = 70
+GOOD_THRESHOLD = 50
+FAIR_THRESHOLD = 30
+
+# Credit given to a skill that only appears in the candidate's saved profile,
+# not in the natural-language query itself.
+PROFILE_ONLY_SKILL_CREDIT = 0.6
+
+EXPERIENCE_ORDER = ["entry", "mid", "senior", "lead"]
